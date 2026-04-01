@@ -14,8 +14,12 @@ The `kubernetes_kots_version` table provides insights into the version history o
 
 **Important Notes:**
 - You **must** specify `app_slug` in a `where` clause to query this table.
-- This table requires a running kotsadm instance in the cluster.
-- The user must have permission to list pods (label `app=kotsadm`) and read the `kotsadm-authstring` secret in the target namespace(s).
+- This table requires a running kotsadm instance in the cluster. It communicates with kotsadm via port-forwarding to the admin console API on port 3000.
+- The Kubernetes user/service account requires the following RBAC permissions in each target namespace:
+  - `list` and `get` on `pods` (core API) — to discover kotsadm pods by label `app=kotsadm` and resolve the port-forward target.
+  - `create` on `pods/portforward` (core API) — to establish the port-forward tunnel to kotsadm on port 3000.
+  - `get` on `secrets` (core API) — to read the `kotsadm-authstring` secret for API authentication.
+- For auto-discovery across all namespaces (no `namespace` filter), these permissions must be cluster-wide. See the [KOTS Applications section](/plugins/turbot/kubernetes#kots-applications) in the main docs for an example `ClusterRole`.
 
 ## Examples
 

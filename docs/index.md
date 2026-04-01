@@ -369,7 +369,41 @@ The plugin supports the following `kubernetes_kots_*` tables:
 
 **Prerequisites:**
 - A running kotsadm instance in the cluster.
-- Permissions to list pods with label `app=kotsadm` and read the `kotsadm-authstring` secret in the target namespace(s).
+- The Kubernetes user/service account must have the RBAC permissions listed below.
+
+### Required RBAC Permissions
+
+The KOTS tables connect to kotsadm by discovering pods, reading an auth secret, and establishing a port-forward. The following Kubernetes RBAC permissions are required in each namespace where kotsadm is installed:
+
+| Resource | API Group | Verbs | Purpose |
+|---|---|---|---|
+| `pods` | `""` (core) | `list`, `get` | Discover running kotsadm pods (label `app=kotsadm`) and resolve the target pod for port-forwarding |
+| `pods/portforward` | `""` (core) | `create` | Establish the port-forward tunnel to the kotsadm pod on port 3000 |
+| `secrets` | `""` (core) | `get` | Read the `kotsadm-authstring` secret used to authenticate API requests |
+
+If you want the plugin to auto-discover kotsadm across **all** namespaces (i.e., no `namespace` filter in the query), the permissions above must be granted cluster-wide or in every namespace where kotsadm may run.
+
+**Example ClusterRole:**
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: steampipe-kots-reader
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list", "get"]
+  - apiGroups: [""]
+    resources: ["pods/portforward"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+    resourceNames: ["kotsadm-authstring"]
+```
+
+**Note:** The `resourceNames` restriction on secrets limits access to only the `kotsadm-authstring` secret. If kotsadm is deployed with a non-default secret name, adjust accordingly.
 
 ## Get Involved
 
