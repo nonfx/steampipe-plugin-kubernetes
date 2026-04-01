@@ -357,6 +357,20 @@ connection "kubernetes" {
 - Every map should have a `chart_path` indicating the directory where the chart is located.
 - The map can have an optional `values_file_paths` argument that overrides value files for rendering the templates. The `values_file_paths` can have more than 1 override value file reference. The plugin reads values from all of those files, and uses the resultant value to render the templates. By default, the plugin uses `values.yaml` if no additional value files are passed.
 
+## KOTS Applications
+
+The plugin supports querying [KOTS](https://kots.io) (Kubernetes Off-The-Shelf) applications managed by the Replicated admin console (kotsadm). The plugin auto-discovers all namespaces where kotsadm is running, connects via port-forwarding, and queries the admin console API to expose application metadata, version history, and configuration.
+
+The plugin supports the following `kubernetes_kots_*` tables:
+
+- [kubernetes_kots_app](https://hub.steampipe.io/plugins/turbot/kubernetes/tables/kubernetes_kots_app) - List KOTS applications with their runtime state, license, and version info.
+- [kubernetes_kots_version](https://hub.steampipe.io/plugins/turbot/kubernetes/tables/kubernetes_kots_version) - Query the version history for a KOTS application.
+- [kubernetes_kots_config](https://hub.steampipe.io/plugins/turbot/kubernetes/tables/kubernetes_kots_config) - Query the configuration values for a KOTS application.
+
+**Prerequisites:**
+- A running kotsadm instance in the cluster.
+- Permissions to list pods with label `app=kotsadm` and read the `kotsadm-authstring` secret in the target namespace(s).
+
 ## Get Involved
 
 - Open source: https://github.com/turbot/steampipe-plugin-kubernetes

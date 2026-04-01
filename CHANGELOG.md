@@ -1,3 +1,16 @@
+## v1.6.0 [2026-04-01]
+
+_New tables_
+
+- Added `kubernetes_kots_app` table to list KOTS applications installed in the cluster, including runtime state, license type, and current deployed version.
+- Added `kubernetes_kots_version` table to query the version history for a KOTS application, including deployment status, release notes, and channel information.
+- Added `kubernetes_kots_config` table to query the configuration values for a KOTS application, organized by config groups and items.
+
+_Enhancements_
+
+- KOTS tables auto-discover all namespaces where the kotsadm admin console is running. When no `namespace` filter is specified, all namespaces are queried automatically.
+- KOTS tables communicate with kotsadm via port-forwarding (SPDY) and authenticate using the `kotsadm-authstring` secret, matching the behavior of the `kots` CLI.
+
 ## v1.5.2 [2026-03-06]
 
 _Bug fixes_
