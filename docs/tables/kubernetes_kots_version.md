@@ -19,7 +19,7 @@ The `kubernetes_kots_version` table provides insights into the version history o
   - `list` and `get` on `pods` (core API) — to discover kotsadm pods by label `app=kotsadm` and resolve the port-forward target.
   - `create` on `pods/portforward` (core API) — to establish the port-forward tunnel to kotsadm on port 3000.
   - `get` on `secrets` (core API) — to read the `kotsadm-authstring` secret for API authentication.
-- For auto-discovery across all namespaces (no `namespace` filter), these permissions must be cluster-wide. See the [KOTS Applications section](/plugins/turbot/kubernetes#kots-applications) in the main docs for an example `ClusterRole`.
+- For auto-discovery across all namespaces (no `namespace` filter), these permissions must be cluster-wide. For tighter access, use namespace-scoped `Role` + `RoleBinding` instead. See the [KOTS Applications section](/plugins/turbot/kubernetes#kots-applications) in the main docs for RBAC examples and scoping guidance.
 
 ## Examples
 

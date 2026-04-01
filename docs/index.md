@@ -381,9 +381,52 @@ The KOTS tables connect to kotsadm by discovering pods, reading an auth secret, 
 | `pods/portforward` | `""` (core) | `create` | Establish the port-forward tunnel to the kotsadm pod on port 3000 |
 | `secrets` | `""` (core) | `get` | Read the `kotsadm-authstring` secret used to authenticate API requests |
 
-If you want the plugin to auto-discover kotsadm across **all** namespaces (i.e., no `namespace` filter in the query), the permissions above must be granted cluster-wide or in every namespace where kotsadm may run.
+#### Scoping permissions
 
-**Example ClusterRole:**
+Kubernetes RBAC does not support label selectors on rules — you cannot restrict `pods/portforward` to only pods matching `app=kotsadm`. The `resourceNames` field requires exact pod names, which are not practical for pods with dynamically generated names (e.g., `kotsadm-7d4b8c9f5-abc12`).
+
+The recommended way to limit the blast radius is to use **namespace-scoped `Role` + `RoleBinding`** instead of a `ClusterRole`, restricting permissions to only the namespace(s) where kotsadm is installed. This ensures port-forward access is confined to the intended namespaces.
+
+**Option 1 — Namespace-scoped Role (recommended for tightest access):**
+
+Create a `Role` in each namespace where kotsadm runs, and bind it to the Steampipe service account. When using this approach, you must specify `namespace` in your queries (auto-discovery across all namespaces will not work without cluster-wide pod list permission).
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: steampipe-kots-reader
+  namespace: my-kots-namespace  # repeat for each kotsadm namespace
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list", "get"]
+  - apiGroups: [""]
+    resources: ["pods/portforward"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+    resourceNames: ["kotsadm-authstring"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: steampipe-kots-reader
+  namespace: my-kots-namespace
+subjects:
+  - kind: User  # or ServiceAccount
+    name: steampipe
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: steampipe-kots-reader
+  apiGroup: rbac.authorization.k8s.io
+```
+
+**Option 2 — ClusterRole (required for auto-discovery):**
+
+If you want the plugin to auto-discover kotsadm across **all** namespaces (i.e., no `namespace` filter in the query), the permissions must be granted cluster-wide. This grants port-forward access to pods in any namespace — scope to specific namespaces using Option 1 if this is too broad.
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -403,7 +446,7 @@ rules:
     resourceNames: ["kotsadm-authstring"]
 ```
 
-**Note:** The `resourceNames` restriction on secrets limits access to only the `kotsadm-authstring` secret. If kotsadm is deployed with a non-default secret name, adjust accordingly.
+**Note:** The `resourceNames` restriction on secrets limits access to only the `kotsadm-authstring` secret. Kubernetes does not support `resourceNames` on `pods/portforward` with dynamic pod names, so namespace scoping (Option 1) is the primary mechanism for limiting port-forward access.
 
 ## Get Involved
 
