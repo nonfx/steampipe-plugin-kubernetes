@@ -88,6 +88,34 @@ By default, the plugin will use the kubeconfig in `~/.kube/config` with the curr
 
 You can also set the kubeconfig file path and context with the `config_path` and `config_context` config arguments respectively.
 
+The `config_path` argument can also be set to the kubeconfig contents directly instead of a file path. This is useful when the kubeconfig is generated programmatically or stored in a secret, and it avoids any disk I/O:
+
+```hcl
+connection "kubernetes" {
+  plugin      = "kubernetes"
+  config_path = <<-EOT
+apiVersion: v1
+kind: Config
+clusters:
+  - name: my-cluster
+    cluster:
+      server: https://my-cluster.example.com
+contexts:
+  - name: my-context
+    context:
+      cluster: my-cluster
+      user: my-user
+current-context: my-context
+users:
+  - name: my-user
+    user:
+      token: my-token
+EOT
+}
+```
+
+The value is treated as inline kubeconfig when it contains newlines and an `apiVersion:` key; otherwise it is treated as a file path.
+
 This plugin supports querying Kubernetes clusters using [OpenID Connect](https://kubernetes.io/docs/reference/access-authn-authz/authentication/#openid-connect-tokens) (OIDC) authentication. No extra configuration is required to query clusters using OIDC.
 
 If no kubeconfig file is found, then the plugin will [attempt to access the API from within a pod](https://kubernetes.io/docs/tasks/run-application/access-api-from-pod/#accessing-the-api-from-within-a-pod) using the service account Kubernetes gives to pods.
@@ -356,6 +384,97 @@ connection "kubernetes" {
 - The above configuration has 2 charts: `my-app-1` and `my-app-2`. The name `my-app-1` and `my-app-2` are considered as release names.
 - Every map should have a `chart_path` indicating the directory where the chart is located.
 - The map can have an optional `values_file_paths` argument that overrides value files for rendering the templates. The `values_file_paths` can have more than 1 override value file reference. The plugin reads values from all of those files, and uses the resultant value to render the templates. By default, the plugin uses `values.yaml` if no additional value files are passed.
+
+## KOTS Applications
+
+The plugin supports querying [KOTS](https://kots.io) (Kubernetes Off-The-Shelf) applications managed by the Replicated admin console (kotsadm). The plugin auto-discovers all namespaces where kotsadm is running, connects via port-forwarding, and queries the admin console API to expose application metadata, version history, and configuration.
+
+The plugin supports the following `kubernetes_kots_*` tables:
+
+- [kubernetes_kots_app](https://hub.steampipe.io/plugins/turbot/kubernetes/tables/kubernetes_kots_app) - List KOTS applications with their runtime state, license, and version info.
+- [kubernetes_kots_version](https://hub.steampipe.io/plugins/turbot/kubernetes/tables/kubernetes_kots_version) - Query the version history for a KOTS application.
+- [kubernetes_kots_config](https://hub.steampipe.io/plugins/turbot/kubernetes/tables/kubernetes_kots_config) - Query the configuration values for a KOTS application.
+
+**Prerequisites:**
+- A running kotsadm instance in the cluster.
+- The Kubernetes user/service account must have the RBAC permissions listed below.
+
+### Required RBAC Permissions
+
+The KOTS tables connect to kotsadm by discovering pods, reading an auth secret, and establishing a port-forward. The following Kubernetes RBAC permissions are required in each namespace where kotsadm is installed:
+
+| Resource | API Group | Verbs | Purpose |
+|---|---|---|---|
+| `pods` | `""` (core) | `list`, `get` | Discover running kotsadm pods (label `app=kotsadm`) and resolve the target pod for port-forwarding |
+| `pods/portforward` | `""` (core) | `create` | Establish the port-forward tunnel to the kotsadm pod on port 3000 |
+| `secrets` | `""` (core) | `get` | Read the `kotsadm-authstring` secret used to authenticate API requests |
+
+#### Scoping permissions
+
+Kubernetes RBAC does not support label selectors on rules — you cannot restrict `pods/portforward` to only pods matching `app=kotsadm`. The `resourceNames` field requires exact pod names, which are not practical for pods with dynamically generated names (e.g., `kotsadm-7d4b8c9f5-abc12`).
+
+The recommended way to limit the blast radius is to use **namespace-scoped `Role` + `RoleBinding`** instead of a `ClusterRole`, restricting permissions to only the namespace(s) where kotsadm is installed. This ensures port-forward access is confined to the intended namespaces.
+
+**Option 1 — Namespace-scoped Role (recommended for tightest access):**
+
+Create a `Role` in each namespace where kotsadm runs, and bind it to the Steampipe service account. When using this approach, you must specify `namespace` in your queries (auto-discovery across all namespaces will not work without cluster-wide pod list permission).
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: steampipe-kots-reader
+  namespace: my-kots-namespace  # repeat for each kotsadm namespace
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list", "get"]
+  - apiGroups: [""]
+    resources: ["pods/portforward"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+    resourceNames: ["kotsadm-authstring"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: steampipe-kots-reader
+  namespace: my-kots-namespace
+subjects:
+  - kind: User  # or ServiceAccount
+    name: steampipe
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: steampipe-kots-reader
+  apiGroup: rbac.authorization.k8s.io
+```
+
+**Option 2 — ClusterRole (required for auto-discovery):**
+
+If you want the plugin to auto-discover kotsadm across **all** namespaces (i.e., no `namespace` filter in the query), the permissions must be granted cluster-wide. This grants port-forward access to pods in any namespace — scope to specific namespaces using Option 1 if this is too broad.
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: steampipe-kots-reader
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list", "get"]
+  - apiGroups: [""]
+    resources: ["pods/portforward"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+    resourceNames: ["kotsadm-authstring"]
+```
+
+**Note:** The `resourceNames` restriction on secrets limits access to only the `kotsadm-authstring` secret. Kubernetes does not support `resourceNames` on `pods/portforward` with dynamic pod names, so namespace scoping (Option 1) is the primary mechanism for limiting port-forward access.
 
 ## Get Involved
 
