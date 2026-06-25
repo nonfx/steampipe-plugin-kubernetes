@@ -1,4 +1,4 @@
-## v1.6.0 [2026-04-01]
+## v1.6.0 [2026-05-31]
 
 _New tables_
 
@@ -8,6 +8,8 @@ _New tables_
 
 _Enhancements_
 
+- Added support for passing inline kubeconfig contents to the `config_path` config argument. ([#354](https://github.com/turbot/steampipe-plugin-kubernetes/pull/354)) (Thanks [@Abhi011999](https://github.com/Abhi011999) for the contribution!)
+- Added `time_zone` column to the `kubernetes_cronjob` table. ([#365](https://github.com/turbot/steampipe-plugin-kubernetes/pull/365)) (Thanks [@mikkeloscar](https://github.com/mikkeloscar) for the contribution!)
 - KOTS tables auto-discover all namespaces where the kotsadm admin console is running. When no `namespace` filter is specified, all namespaces are queried automatically.
 - KOTS tables communicate with kotsadm via port-forwarding (SPDY) and authenticate using the `kotsadm-authstring` secret, matching the behavior of the `kots` CLI.
 
